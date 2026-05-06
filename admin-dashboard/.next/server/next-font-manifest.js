@@ -1,0 +1,1 @@
+self.__NEXT_FONT_MANIFEST="{\"pages\":{},\"app\":{\"/media/storage/Documents/gym/admin-dashboard/app/layout\":[\"static/media/26d4368bf94c0ec4-s.p.woff2\"]},\"appUsingSizeAdjust\":true,\"pagesUsingSizeAdjust\":false}"

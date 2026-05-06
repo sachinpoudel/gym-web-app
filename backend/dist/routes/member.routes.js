@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const member_controller_1 = require("../controllers/member.controller");
+const auth_1 = require("../middleware/auth");
+const roleGuard_1 = require("../middleware/roleGuard");
+const asyncHandler_1 = require("../utils/asyncHandler");
+const router = (0, express_1.Router)();
+router.use(auth_1.authenticate);
+router.get("/", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.getAll));
+router.get("/expiring", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.getExpiring));
+router.get("/:id/stats", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.getStats));
+router.get("/:id", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.getById));
+router.post("/create", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.create));
+router.put("/:id", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.update));
+router.delete("/:id", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.remove));
+router.patch("/:id/freeze", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.freeze));
+router.patch("/:id/activate", roleGuard_1.requireAdmin, (0, asyncHandler_1.asyncHandler)(member_controller_1.memberController.activate));
+exports.default = router;
+//# sourceMappingURL=member.routes.js.map
