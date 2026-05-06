@@ -16,7 +16,7 @@ export const env = {
   databaseUrl: getEnv("DATABASE_URL"),
   jwtSecret: getEnv("JWT_SECRET", "change_me_in_production"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
-  corsOrigin: process.env.CORS_ORIGIN ?? "*"
+ clientUrl: getEnv("CLIENT_URL"),
 };
 
 export const isProduction = env.nodeEnv === "production";
