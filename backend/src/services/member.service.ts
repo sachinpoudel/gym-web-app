@@ -32,6 +32,12 @@ const createTemporaryPassword = (): string => {
   return `Temp#${randomUUID().replace(/-/g, "")}`;
 };
 
+const withDaysLeft = <T extends { expiryDate: Date }>(member: T) => {
+  if (!member || !member.expiryDate) return member;
+  const daysLeft = Math.ceil((member.expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  return { ...member, daysLeft };
+};
+
 export const memberService = {
   async createOnboarding(data: CreateMemberOnboardingInput) {
     if (!Number.isFinite(data.paymentAmount) || data.paymentAmount < 0) {
@@ -43,7 +49,7 @@ export const memberService = {
       throw new HttpError(409, "Email already in use");
     }
 
-     const temporaryPasswordHash = await hashPassword(createTemporaryPassword());
+    const temporaryPasswordHash = await hashPassword(createTemporaryPassword());
 
     return prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -89,7 +95,7 @@ export const memberService = {
           email: user.email,
           role: user.role
         },
-        member,
+        member: withDaysLeft(member),
         payment
       };
     });
@@ -104,13 +110,13 @@ export const memberService = {
       ...(plan ? { plan } : {}),
       ...(search
         ? {
-            OR: [
-              { firstName: { contains: search, mode: "insensitive" } },
-              { lastName: { contains: search, mode: "insensitive" } },
-              { phone: { contains: search, mode: "insensitive" } },
-              { user: { email: { contains: search, mode: "insensitive" } } }
-            ]
-          }
+          OR: [
+            { firstName: { contains: search, mode: "insensitive" } },
+            { lastName: { contains: search, mode: "insensitive" } },
+            { phone: { contains: search, mode: "insensitive" } },
+            { user: { email: { contains: search, mode: "insensitive" } } }
+          ]
+        }
         : {})
     };
 
@@ -128,14 +134,14 @@ export const memberService = {
     ]);
 
     const mapped = data.map((member) => {
-      const daysToExpiry = Math.ceil(
+      const daysLeft = Math.ceil(
         (member.expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
 
       return {
         ...member,
-        daysToExpiry,
-        isExpiringSoon: daysToExpiry >= 0 && daysToExpiry <= 7
+        daysLeft,
+        isExpiringSoon: daysLeft >= 0 && daysLeft <= 7
       };
     });
 
@@ -158,7 +164,7 @@ export const memberService = {
         user: { select: { email: true, role: true } }
       },
       orderBy: { expiryDate: "asc" }
-    });
+    }).then(members => members.map(withDaysLeft));
   },
 
   getById(id: string) {
@@ -171,24 +177,35 @@ export const memberService = {
         attendance: true,
         bookings: { include: { gymClass: true } }
       }
-    });
+    }).then(member => member ? withDaysLeft(member) : null);
   },
 
   update(id: string, data: Prisma.MemberUncheckedUpdateInput) {
-    return prisma.member.update({ where: { id }, data });
+    return prisma.member.update({ where: { id }, data }).then(withDaysLeft);
   },
 
   updateStatus(id: string, status: MemberStatus) {
     return prisma.member.update({
       where: { id },
       data: { status }
-    });
+    }).then(withDaysLeft);
   },
 
   remove(id: string) {
-    return prisma.member.update({
-      where: { id },
-      data: { status: MemberStatus.EXPIRED }
+    return prisma.$transaction(async (tx) => {
+      const member = await tx.member.findUnique({ where: { id } });
+      if (!member) return null;
+
+      // Manually cascade delete
+      await tx.attendance.deleteMany({ where: { memberId: id } });
+      await tx.payment.deleteMany({ where: { memberId: id } });
+      await tx.progress.deleteMany({ where: { memberId: id } });
+      await tx.booking.deleteMany({ where: { memberId: id } });
+
+      const deletedMember = await tx.member.delete({ where: { id } });
+      await tx.user.delete({ where: { id: member.userId } });
+
+      return withDaysLeft(deletedMember);
     });
   },
 
@@ -196,14 +213,14 @@ export const memberService = {
     return prisma.member.update({
       where: { id },
       data: { status: MemberStatus.FROZEN }
-    });
+    }).then(withDaysLeft);
   },
 
   activate(id: string) {
     return prisma.member.update({
       where: { id },
       data: { status: MemberStatus.ACTIVE }
-    });
+    }).then(withDaysLeft);
   },
 
   async getStats(memberId: string) {

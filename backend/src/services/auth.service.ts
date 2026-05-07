@@ -55,7 +55,7 @@ export const authService = {
       where: { email },
       include: {
         member: true,
-        trainer: true
+        
       }
     });
 
@@ -73,7 +73,7 @@ export const authService = {
       email: user.email,
       role: user.role,
       member: user.member,
-      trainer: user.trainer
+    
     };
   },
 

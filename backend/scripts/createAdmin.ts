@@ -4,8 +4,8 @@ import { hashPassword } from "../src/utils/password";
 const prisma = new PrismaClient();
 
 async function main() {
-    const email = "admin@gym.com";
-    const password = await hashPassword("admin123");
+    const email = "admin@gmail.com";
+    const password = await hashPassword("admin12345");
 
     const existing = await prisma.user.findUnique({ where: { email } });
 

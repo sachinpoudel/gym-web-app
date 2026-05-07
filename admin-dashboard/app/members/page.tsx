@@ -7,11 +7,7 @@ import type { Member } from "@/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const getDaysLeft = (member: Member) => {
-  if (typeof member.daysLeft === "number") return member.daysLeft;
-  const expiry = new Date(member.expiryDate);
-  return Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-};
+// No fallback getDaysLeft. We strictly require it from the backend.
 
 export default async function MembersPage() {
   const token = cookies().get("admin_token")?.value;
@@ -21,7 +17,11 @@ export default async function MembersPage() {
     ? []
     : response.data
   ).map((m) => {
-    const daysLeft = getDaysLeft(m);
+    if (typeof m.daysLeft !== "number") {
+      throw new Error(`Critical data missing: daysLeft for member ${m.id}`);
+    }
+    const daysLeft = m.daysLeft;
+
     const fullName =
       m.fullName ||
       [m.firstName, m.lastName].filter(Boolean).join(" ").trim();

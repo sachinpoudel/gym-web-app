@@ -11,18 +11,11 @@ import type { ChartPoint, Member, PlanDistributionPoint } from "@/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const getDaysLeft = (member: Member) => {
-  if (typeof member.daysLeft === "number") {
-    return member.daysLeft;
-  }
-
-  const expiry = new Date(member.expiryDate);
-  const diff = expiry.getTime() - Date.now();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
-};
-
 const getStatus = (member: Member) => {
-  const daysLeft = getDaysLeft(member);
+  if (typeof member.daysLeft !== "number") {
+    throw new Error("Critical data missing: daysLeft must be provided by the backend");
+  }
+  const daysLeft = member.daysLeft;
   if (member.status === "FROZEN") return "FROZEN";
   if (daysLeft < 0 || member.status === "EXPIRED") return "EXPIRED";
   if (daysLeft <= 7) return "Expiring Soon";
@@ -85,7 +78,10 @@ const buildExpiryTimeline = (members: Member[]): ChartPoint[] => {
   ];
 
   members.forEach((member) => {
-    const daysLeft = getDaysLeft(member);
+    if (typeof member.daysLeft !== "number") {
+      throw new Error("Critical data missing: daysLeft must be provided by the backend");
+    }
+    const daysLeft = member.daysLeft;
     buckets.forEach((bucket) => {
       if (daysLeft >= 0 && daysLeft <= bucket.limit) {
         bucket.value += 1;

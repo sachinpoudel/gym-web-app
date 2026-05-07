@@ -3,9 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Member, MemberPlan, MemberStatus } from "@/types";
+import { useTransition } from "react";
 import { deleteMember, freezeMember, activateMember } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
+import { useRouter } from "next/navigation";
 import AddMemberModal from "./AddMemberModal";
+
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,6 +52,7 @@ const fmtDate = (iso: string) => {
 type Props = { initialMembers: Member[] };
 
 export default function MembersClient({ initialMembers }: Props) {
+    const router = useRouter();
     const [members, setMembers] = useState<Member[]>(initialMembers);
     const [search, setSearch] = useState("");
     const [planFilter, setPlanFilter] = useState<"All" | MemberPlan>("All");
@@ -57,6 +61,12 @@ export default function MembersClient({ initialMembers }: Props) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+    const [isPending, startTransition] = useTransition();
+
+    // Sync with server if the props update (e.g. after a router.refresh)
+    useMemo(() => {
+        setMembers(initialMembers);
+    }, [initialMembers]);
 
     const filtered = useMemo(() => {
         const q = search.toLowerCase();
@@ -85,64 +95,73 @@ export default function MembersClient({ initialMembers }: Props) {
         if (res.success) {
             setMembers((prev) => prev.filter((m) => m.id !== deleteId));
             showToast("Member removed.");
+            startTransition(() => {
+                router.refresh();
+                setDeleteId(null);
+                setActionLoading(null);
+            });
         } else {
-            showToast("Failed to delete. Try again.", false);
+            showToast(res.message || "Failed to delete. Try again.", false);
+            setDeleteId(null);
+            setActionLoading(null);
         }
-        setDeleteId(null);
-        setActionLoading(null);
     };
 
     const handleFreeze = async (id: string) => {
         setActionLoading(id);
         const token = getAuthToken() || undefined;
         const res = await freezeMember(id, token);
-        if (res.success && res.data) {
+        if (res.success) {
             setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, status: "FROZEN" } : m)));
             showToast("Member frozen.");
+            startTransition(() => {
+                router.refresh();
+                setActionLoading(null);
+            });
         } else {
-            showToast("Action failed.", false);
+            showToast(res.message || "Action failed.", false);
+            setActionLoading(null);
         }
-        setActionLoading(null);
     };
 
     const handleActivate = async (id: string) => {
         setActionLoading(id);
         const token = getAuthToken() || undefined;
         const res = await activateMember(id, token);
-        if (res.success && res.data) {
+        if (res.success) {
             setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, status: "ACTIVE" } : m)));
             showToast("Member activated.");
+            startTransition(() => {
+                router.refresh();
+                setActionLoading(null);
+            });
         } else {
-            showToast("Action failed.", false);
+            showToast(res.message || "Action failed.", false);
+            setActionLoading(null);
         }
-        setActionLoading(null);
     };
 
-    const handleMemberAdded = (m: Member) => {
-        const fullName =
-            m.fullName || [m.firstName, m.lastName].filter(Boolean).join(" ").trim() || "New Member";
-        const expiryDate = m.expiryDate ?? "";
-        const daysLeft =
-            typeof m.daysLeft === "number" && !isNaN(m.daysLeft)
-                ? m.daysLeft
-                : expiryDate
-                    ? Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000)
-                    : 0;
+    const handleMemberAdded = (m: any) => {
+        // m could be { user, member, payment } from onboarding API
+        const newMember = m?.member ? m.member : m;
+
         const normalised: Member = {
-            ...m,
-            fullName,
-            email: m.email ?? "",
-            phone: m.phone ?? "",
-            plan: m.plan ?? "BASIC",
-            status: m.status ?? "ACTIVE",
-            daysLeft,
-            joinDate: m.joinDate ?? new Date().toISOString(),
-            expiryDate,
-            createdAt: m.createdAt ?? new Date().toISOString(),
+            ...newMember,
+            fullName: newMember.fullName || [newMember.firstName, newMember.lastName].filter(Boolean).join(" ").trim() || "New Member",
         };
-        setMembers((prev) => [normalised, ...prev]);
+        setMembers(prev => [normalised, ...prev]);
         setShowAddModal(false);
         showToast("Member added successfully!");
+
+        startTransition(() => {
+            router.refresh();
+            // Wait momentarily to show toast before redirecting
+            setTimeout(() => {
+                if (newMember?.id) {
+                    router.push(`/members/${newMember.id}`);
+                }
+            }, 800);
+        });
     };
 
     return (
@@ -177,8 +196,8 @@ export default function MembersClient({ initialMembers }: Props) {
             </div>
 
             {/* Filters */}
-            <div className="mb-5 flex flex-wrap items-center gap-3">
-                <div className="relative flex-1 min-w-[200px]">
+            <div className="mb-5 flex flex-col sm:flex-row flex-wrap gap-3">
+                <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
                     </svg>
@@ -191,28 +210,30 @@ export default function MembersClient({ initialMembers }: Props) {
                     />
                 </div>
 
-                <select
-                    value={planFilter}
-                    onChange={(e) => setPlanFilter(e.target.value as typeof planFilter)}
-                    className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                >
-                    <option value="All">All Plans</option>
-                    <option value="BASIC">Basic (1 month)</option>
-                    <option value="PRO">Pro (3 months)</option>
-                    <option value="ELITE">Elite (12 months)</option>
-                </select>
+                <div className="flex w-full gap-3 sm:w-auto">
+                    <select
+                        value={planFilter}
+                        onChange={(e) => setPlanFilter(e.target.value as typeof planFilter)}
+                        className="w-full sm:w-auto flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    >
+                        <option value="All">All Plans</option>
+                        <option value="BASIC">Basic (1 month)</option>
+                        <option value="PRO">Pro (3 months)</option>
+                        <option value="ELITE">Elite (12 months)</option>
+                    </select>
 
-                <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                    className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                >
-                    <option value="All">All Status</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="Expiring Soon">Expiring Soon</option>
-                    <option value="EXPIRED">Expired</option>
-                    <option value="FROZEN">Frozen</option>
-                </select>
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                        className="w-full sm:w-auto flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    >
+                        <option value="All">All Status</option>
+                        <option value="ACTIVE">Active</option>
+                        <option value="Expiring Soon">Expiring Soon</option>
+                        <option value="EXPIRED">Expired</option>
+                        <option value="FROZEN">Frozen</option>
+                    </select>
+                </div>
             </div>
 
             {/* Table */}
@@ -240,7 +261,8 @@ export default function MembersClient({ initialMembers }: Props) {
                                 </tr>
                             ) : (
                                 filtered.map((member) => {
-                                    const isBusy = actionLoading === member.id;
+                                    // if isPending is true, consider the action still loading
+                                    const isBusy = actionLoading === member.id || isPending;
                                     const isExpiringSoon =
                                         member.status === "ACTIVE" && member.daysLeft <= 7 && member.daysLeft >= 0;
                                     const displayStatus = isExpiringSoon ? "Expiring Soon" : member.status;

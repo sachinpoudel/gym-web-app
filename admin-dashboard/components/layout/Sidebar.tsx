@@ -17,7 +17,11 @@ const disabledItems = [
   { label: "Bookings", href: "/bookings" },
 ];
 
-export default function Sidebar() {
+type SidebarProps = {
+  onNavigate?: () => void;
+};
+
+export default function Sidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [adminName, setAdminName] = useState<string | null>(null);
@@ -44,6 +48,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               className={clsx(
                 "flex items-center rounded-md px-3 py-2 text-sm font-medium",
                 active

@@ -7,7 +7,7 @@ export default function DashboardLoading() {
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
-            className="h-24 animate-pulse rounded-lg border border-black/10 bg-neutral-100"
+            className="h-24 animate-pulse rounded-lg border border-black/10 bg-neutral-300"
           />
         ))}
       </div>
@@ -15,7 +15,7 @@ export default function DashboardLoading() {
         {Array.from({ length: 3 }).map((_, index) => (
           <div
             key={index}
-            className="h-72 animate-pulse rounded-lg border border-black/10 bg-neutral-100"
+            className="h-72 animate-pulse rounded-lg border border-black/10 bg-neutral-300"
           />
         ))}
       </div>

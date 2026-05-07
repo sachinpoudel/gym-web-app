@@ -31,6 +31,13 @@ export const memberController = {
       ? new Date(req.body.expiryDate)
       : calculateExpiryDate(joinDate, plan);
 
+    let status = (req.body.status as MemberStatus | undefined) ?? MemberStatus.ACTIVE;
+
+    // Automatically flag expired if registering past members (DB level accuracy)
+    if (status === MemberStatus.ACTIVE && expiryDate < new Date(new Date().setHours(0,0,0,0))) {
+      status = MemberStatus.EXPIRED;
+    }
+
     const emergencyContactName = (req.body.emergencyContactName as string | undefined)?.trim();
     const emergencyContactPhone = (req.body.emergencyContactPhone as string | undefined)?.trim();
 
@@ -43,7 +50,7 @@ export const memberController = {
       plan,
       joinDate,
       expiryDate,
-      status: (req.body.status as MemberStatus | undefined) ?? MemberStatus.ACTIVE,
+      status,
       ...(emergencyContactName && emergencyContactPhone
         ? { emergencyContact: `${emergencyContactName} | ${emergencyContactPhone}` }
         : {}),
@@ -59,7 +66,7 @@ export const memberController = {
 
   async getAll(req: Request, res: Response) {
     const page = Math.max(Number(req.query.page ?? 1), 1);
-    const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 100);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 1000), 1), 10000);
 
     const status = req.query.status as MemberStatus | undefined;
     const plan = req.query.plan as MemberPlan | undefined;
@@ -94,6 +101,24 @@ export const memberController = {
       delete updateData.emergencyContactPhone;
     }
 
+    if (updateData.dateOfBirth) {
+      updateData.dateOfBirth = new Date(updateData.dateOfBirth);
+    }
+    if (updateData.expiryDate) {
+      updateData.expiryDate = new Date(updateData.expiryDate);
+
+      // Auto-toggle status in db instead of relying exclusively on overnight cron
+      if (updateData.expiryDate < new Date(new Date().setHours(0,0,0,0))) {
+        if (!updateData.status || updateData.status === MemberStatus.ACTIVE) {
+          updateData.status = MemberStatus.EXPIRED;
+        }
+      } else {
+        if (!updateData.status || updateData.status === MemberStatus.EXPIRED) {
+          updateData.status = MemberStatus.ACTIVE;
+        }
+      }
+    }
+
     // Ignore payment fields to prevent Prisma crashes during member update
     delete updateData.paymentMethod;
     delete updateData.paymentAmount;
@@ -112,7 +137,7 @@ export const memberController = {
 
   async remove(req: Request, res: Response) {
     await memberService.remove(getRequiredParam(req, "id"));
-    return sendSuccess(res, null, "Member set to expired");
+    return sendSuccess(res, null, "Member deleted successfully");
   },
 
   async freeze(req: Request, res: Response) {
