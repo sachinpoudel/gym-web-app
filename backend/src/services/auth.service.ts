@@ -51,6 +51,8 @@ export const authService = {
   },
 
   async login(email: string, password: string) {
+
+    
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
@@ -77,6 +79,7 @@ export const authService = {
     };
   },
 
+  
   logout() {
     return {
       success: true

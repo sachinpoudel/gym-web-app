@@ -22,6 +22,17 @@ const expireMemberships = async (): Promise<void> => {
   }
 };
 
+
+  cron.schedule("*/4 * * * *", async () => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      console.log("[cron] Neon keepalive ✓");
+    } catch (e) {
+      console.error("[cron] Neon keepalive failed:", e);
+    }
+  });
+
+
 const logExpiringInSevenDays = async (): Promise<void> => {
   try {
     const now = new Date();

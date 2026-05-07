@@ -43,14 +43,7 @@ app.use(errorHandler);
 startCronJobs();
 
 
-cron.schedule('*/4 * * * *', async () => {
-  try {
-    await prisma.$queryRaw`SELECT 1`
-    console.log('Neon keepalive ✓')
-  } catch (e) {
-    console.error('Keepalive failed:', e)
-  }
-})
+
 
 app.get("/health", (_req, res) => {
 	res.status(200).json({ status: "ok" });
