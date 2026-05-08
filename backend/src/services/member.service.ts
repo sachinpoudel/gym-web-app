@@ -8,6 +8,7 @@ interface GetAllFilters {
   status?: MemberStatus;
   plan?: "BASIC" | "PRO" | "ELITE";
   search?: string;
+  expiringSoon?: boolean;
   page: number;
   limit: number;
 }
@@ -27,6 +28,26 @@ interface CreateMemberOnboardingInput {
   paymentAmount: number;
   paymentMethod: PaymentMethod;
 }
+
+interface RenewMembershipInput {
+  memberId: string;
+  plan: MemberPlan;
+  paymentAmount: number;
+  paymentMethod: PaymentMethod;
+  renewalStart?: Date;
+}
+
+const PLAN_MONTHS: Record<MemberPlan, number> = {
+  BASIC: 1,
+  PRO: 3,
+  ELITE: 12
+};
+
+const addPlanMonths = (start: Date, plan: MemberPlan) => {
+  const date = new Date(start);
+  date.setMonth(date.getMonth() + PLAN_MONTHS[plan]);
+  return date;
+};
 
 const createTemporaryPassword = (): string => {
   return `Temp#${randomUUID().replace(/-/g, "")}`;
@@ -102,21 +123,34 @@ export const memberService = {
   },
 
   async getAll(filters: GetAllFilters) {
-    const { status, plan, search, page, limit } = filters;
+    const { status, plan, search, expiringSoon, page, limit } = filters;
     const skip = (page - 1) * limit;
+
+    const now = new Date();
+    const expiringEnd = new Date(now);
+    expiringEnd.setDate(expiringEnd.getDate() + 7);
 
     const where: Prisma.MemberWhereInput = {
       ...(status ? { status } : {}),
       ...(plan ? { plan } : {}),
+      ...(expiringSoon
+        ? {
+            status: MemberStatus.ACTIVE,
+            expiryDate: {
+              gte: now,
+              lte: expiringEnd
+            }
+          }
+        : {}),
       ...(search
         ? {
-          OR: [
-            { firstName: { contains: search, mode: "insensitive" } },
-            { lastName: { contains: search, mode: "insensitive" } },
-            { phone: { contains: search, mode: "insensitive" } },
-            { user: { email: { contains: search, mode: "insensitive" } } }
-          ]
-        }
+            OR: [
+              { firstName: { contains: search, mode: "insensitive" } },
+              { lastName: { contains: search, mode: "insensitive" } },
+              { phone: { contains: search, mode: "insensitive" } },
+              { user: { email: { contains: search, mode: "insensitive" } } }
+            ]
+          }
         : {})
     };
 
@@ -240,5 +274,52 @@ export const memberService = {
       classesAttended,
       paymentSummary
     };
+  },
+
+  async renewMembership({ memberId, plan, paymentAmount, paymentMethod, renewalStart }: RenewMembershipInput) {
+    if (!Number.isFinite(paymentAmount) || paymentAmount < 0) {
+      throw new HttpError(400, "Payment amount must be a non-negative number");
+    }
+
+    const member = await prisma.member.findUnique({ where: { id: memberId } });
+    if (!member) {
+      throw new HttpError(404, "Member not found");
+    }
+
+    const today = new Date();
+    const baseDate = renewalStart
+      ? renewalStart
+      : member.expiryDate > today
+        ? member.expiryDate
+        : today;
+    const newExpiryDate = addPlanMonths(baseDate, plan);
+
+    return prisma.$transaction(async (tx) => {
+      const updatedMember = await tx.member.update({
+        where: { id: memberId },
+        data: {
+          plan,
+          expiryDate: newExpiryDate,
+          status: MemberStatus.ACTIVE
+        }
+      });
+
+      const payment = await tx.payment.create({
+        data: {
+          memberId,
+          amount: paymentAmount,
+          plan,
+          method: paymentMethod,
+          status: PaymentStatus.PAID,
+          paidAt: new Date(),
+          dueDate: newExpiryDate
+        }
+      });
+
+      return {
+        member: withDaysLeft(updatedMember),
+        payment
+      };
+    });
   }
 };

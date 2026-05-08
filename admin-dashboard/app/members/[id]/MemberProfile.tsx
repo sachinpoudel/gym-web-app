@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { updateMember } from "@/lib/api";
+import { renewMember, updateMember } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
-import type { Member, MemberPlan, MemberUpdateData } from "@/types";
+import Modal from "@/components/ui/Modal";
+import type { Member, MemberPlan, MemberUpdateData, PaymentMethod } from "@/types";
 
 const PLAN_LABEL: Record<MemberPlan, string> = {
   BASIC: "Basic (1 month)",
@@ -17,6 +18,20 @@ const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "bg-emerald-100 text-emerald-700",
   EXPIRED: "bg-red-100 text-red-600",
   FROZEN: "bg-sky-100 text-sky-700",
+};
+
+const PLAN_MONTHS: Record<MemberPlan, number> = {
+  BASIC: 1,
+  PRO: 3,
+  ELITE: 12,
+};
+
+const PAYMENT_METHODS: PaymentMethod[] = ["CASH", "CARD", "ONLINE"];
+
+const PLAN_PRICING: Record<MemberPlan, number> = {
+  BASIC: 1500,
+  PRO: 3500,
+  ELITE: 10000,
 };
 
 const fmtDate = (iso: string) => {
@@ -39,6 +54,9 @@ export default function MemberProfile({ member }: { member: Member }) {
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [renewOpen, setRenewOpen] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  const [renewError, setRenewError] = useState<string | null>(null);
 
   // Edit form state
   const [editForm, setEditForm] = useState<MemberUpdateData>({
@@ -53,8 +71,17 @@ export default function MemberProfile({ member }: { member: Member }) {
     healthNotes: member.healthNotes || "",
   });
 
+  const [renewForm, setRenewForm] = useState({
+    plan: member.plan as MemberPlan,
+    paymentAmount: String(PLAN_PRICING[member.plan as MemberPlan] ?? ""),
+    paymentMethod: "CASH" as PaymentMethod,
+  });
+
   const set = (key: string, value: string) =>
     setEditForm((prev) => ({ ...prev, [key]: value }));
+
+  const setRenew = (key: keyof typeof renewForm, value: string) =>
+    setRenewForm((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +101,42 @@ export default function MemberProfile({ member }: { member: Member }) {
     setSaving(false);
   };
 
+  const handleRenew = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRenewing(true);
+    setRenewError(null);
+    const token = getAuthToken() || undefined;
+
+    const paymentAmount = Number(renewForm.paymentAmount);
+    if (!Number.isFinite(paymentAmount) || paymentAmount < 0) {
+      setRenewError("Enter a valid payment amount.");
+      setRenewing(false);
+      return;
+    }
+
+    const res = await renewMember(
+      member.id,
+      {
+        plan: renewForm.plan,
+        paymentAmount,
+        paymentMethod: renewForm.paymentMethod,
+      },
+      token
+    );
+
+    if (!res.success || !res.data) {
+      setRenewError(res.message || "Failed to renew membership.");
+      setRenewing(false);
+      return;
+    }
+
+    setMemberState(res.data.member);
+    setRenewOpen(false);
+    setToast("Membership renewed successfully!");
+    setTimeout(() => setToast(null), 3000);
+    setRenewing(false);
+  };
+
   const inputCls =
     "w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 bg-white transition";
   const labelCls = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500";
@@ -82,6 +145,12 @@ export default function MemberProfile({ member }: { member: Member }) {
     memberState.fullName ||
     [memberState.firstName, memberState.lastName].filter(Boolean).join(" ") ||
     "—";
+
+  const baseDate = new Date(
+    new Date(memberState.expiryDate) > new Date() ? memberState.expiryDate : new Date()
+  );
+  const previewExpiry = new Date(baseDate);
+  previewExpiry.setMonth(previewExpiry.getMonth() + PLAN_MONTHS[renewForm.plan]);
 
   return (
     <div className="space-y-6">
@@ -224,15 +293,99 @@ export default function MemberProfile({ member }: { member: Member }) {
             <Link href="/members" className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
               ← Back to Members
             </Link>
-            <button
-              onClick={() => setEditing(true)}
-              className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
-            >
-              Edit Member
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setRenewOpen(true)}
+                className="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+              >
+                Renew Membership
+              </button>
+              <button
+                onClick={() => setEditing(true)}
+                className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+              >
+                Edit Member
+              </button>
+            </div>
           </div>
         </>
       )}
+
+      <Modal title="Renew Membership" open={renewOpen} onClose={() => setRenewOpen(false)}>
+        <form onSubmit={handleRenew} className="space-y-4">
+          {renewError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {renewError}
+            </div>
+          )}
+          <div>
+            <label className={labelCls}>Plan</label>
+            <select
+              className={inputCls}
+              value={renewForm.plan}
+              onChange={(e) => {
+                const value = e.target.value as MemberPlan;
+                setRenew("plan", value);
+                setRenewForm((prev) => ({
+                  ...prev,
+                  paymentAmount: String(PLAN_PRICING[value] ?? ""),
+                }));
+              }}
+            >
+              <option value="BASIC">Basic (1 month)</option>
+              <option value="PRO">Pro (3 months)</option>
+              <option value="ELITE">Elite (12 months)</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Payment Amount</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className={`${inputCls} bg-gray-100 text-gray-500`}
+              value={renewForm.paymentAmount}
+              disabled
+              aria-disabled="true"
+              placeholder="0.00"
+              required
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Payment Method</label>
+            <select
+              className={inputCls}
+              value={renewForm.paymentMethod}
+              onChange={(e) => setRenew("paymentMethod", e.target.value)}
+            >
+              {PAYMENT_METHODS.map((method) => (
+                <option key={method} value={method}>
+                  {method}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            New expiry preview: {fmtDate(previewExpiry.toISOString())}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setRenewOpen(false)}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={renewing}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {renewing ? "Renewing…" : "Confirm Renewal"}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

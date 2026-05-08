@@ -8,34 +8,73 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  Area,
 } from "recharts";
+import { useId } from "react";
 import type { ChartPoint } from "@/types";
-
-const tooltipStyle = {
-  backgroundColor: "#ffffff",
-  border: "1px solid #0a0a0a",
-  fontSize: "12px",
-};
 
 type Props = {
   data: ChartPoint[];
+  color?: string;
+  gradientFrom?: string;
+  gradientTo?: string;
+  valueFormat?: "number" | "currency" | "compact";
 };
 
-export default function MemberGrowthChart({ data }: Props) {
+export default function MemberGrowthChart({
+  data,
+  color = "#1d4ed8",
+  gradientFrom = "rgba(29, 78, 216, 0.35)",
+  gradientTo = "rgba(29, 78, 216, 0)",
+  valueFormat = "number",
+}: Props) {
+  const gradientId = useId();
+  const tooltipStyle = {
+    backgroundColor: "#ffffff",
+    border: "1px solid rgba(0, 0, 0, 0.1)",
+    fontSize: "12px",
+  };
+  const formatter = (value: number) =>
+    valueFormat === "currency"
+      ? new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          maximumFractionDigits: 0,
+        }).format(value || 0)
+      : valueFormat === "compact"
+        ? new Intl.NumberFormat("en-US", {
+            notation: "compact",
+            compactDisplay: "short",
+            maximumFractionDigits: 1,
+          }).format(value || 0)
+        : value.toString();
+
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer>
         <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="#e5e5e5" strokeDasharray="3 3" />
-          <XAxis dataKey="label" stroke="#0a0a0a" />
-          <YAxis stroke="#0a0a0a" />
-          <Tooltip contentStyle={tooltipStyle} />
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={gradientFrom} />
+              <stop offset="100%" stopColor={gradientTo} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" />
+          <XAxis dataKey="label" stroke="#111827" tickLine={false} axisLine={false} />
+          <YAxis
+            stroke="#111827"
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(value) => formatter(Number(value))}
+          />
+          <Tooltip contentStyle={tooltipStyle} formatter={formatter} />
+          <Area type="monotone" dataKey="value" stroke="none" fill={`url(#${gradientId})`} />
           <Line
             type="monotone"
             dataKey="value"
-            stroke="#0a0a0a"
+            stroke={color}
             strokeWidth={2}
-            dot={{ r: 3, fill: "#0a0a0a" }}
+            dot={{ r: 3, fill: color }}
           />
         </LineChart>
       </ResponsiveContainer>

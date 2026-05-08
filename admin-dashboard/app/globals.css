@@ -1,9 +1,16 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: light;
+  --ink: #121212;
+  --paper: #fbf8f2;
+  --sand: #f4efe6;
+  --accent: #1d4ed8;
+  --accent-2: #c05a0a;
 }
 
 html,
@@ -12,8 +19,9 @@ body {
 }
 
 body {
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Space Grotesk", sans-serif;
   font-feature-settings: "ss01" on, "ss02" on;
 }
 

@@ -1,5 +1,16 @@
 import { authHeader } from "@/lib/auth";
-import type { Admin, ApiResponse, CreateMemberPayload, Member, MemberUpdateData } from "@/types";
+import type {
+  Admin,
+  ApiResponse,
+  CreateMemberPayload,
+  Member,
+  MemberListResponse,
+  MemberUpdateData,
+  OverduePayment,
+  ReportOverview,
+  RenewMemberPayload,
+  RenewMemberResponse
+} from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
@@ -49,21 +60,9 @@ export const adminLogin = (email: string, password: string) =>
     headers: { "Content-Type": "application/json" },
   });
 
-type MembersPayload = { total: number; data: Member[] } | Member[];
-
 export const getMembers = async (token?: string, params?: Record<string, string>) => {
   const query = params ? "?" + new URLSearchParams(params).toString() : "";
-  const response = await request<MembersPayload>(`/api/members${query}`, { token });
-
-  if (!response.success || !response.data) {
-    return response as ApiResponse<Member[]>;
-  }
-
-  const members = Array.isArray(response.data)
-    ? response.data
-    : response.data.data || [];
-
-  return { ...response, data: members } as ApiResponse<Member[]>;
+  return request<MemberListResponse>(`/api/members${query}`, { token });
 };
 
 export const getMemberById = (id: string, token?: string) =>
@@ -96,3 +95,17 @@ export const freezeMember = (id: string, token?: string) =>
 
 export const activateMember = (id: string, token?: string) =>
   request<Member>(`/api/members/${id}/activate`, { method: "PATCH", token });
+
+export const getReportsOverview = (token?: string) =>
+  request<ReportOverview>("/api/reports/overview", { token });
+
+export const renewMember = (id: string, payload: RenewMemberPayload, token?: string) =>
+  request<RenewMemberResponse>(`/api/members/${id}/renew`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+    token,
+  });
+
+export const getOverduePayments = (token?: string) =>
+  request<OverduePayment[]>("/api/payments/overdue", { token });

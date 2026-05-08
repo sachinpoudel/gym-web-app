@@ -10,11 +10,11 @@ import {
 } from "recharts";
 import type { PlanDistributionPoint } from "@/types";
 
-const COLORS = ["#0a0a0a", "#666666", "#999999", "#cccccc"];
+const COLORS = ["#2563eb", "#f59e0b", "#10b981", "#ef4444"];
 
 const tooltipStyle = {
   backgroundColor: "#ffffff",
-  border: "1px solid #0a0a0a",
+  border: "1px solid rgba(0, 0, 0, 0.1)",
   fontSize: "12px",
 };
 
@@ -32,7 +32,8 @@ export default function PlanDistributionChart({ data }: Props) {
             dataKey="value"
             nameKey="name"
             innerRadius={50}
-            outerRadius={80}
+            outerRadius={85}
+            paddingAngle={2}
             stroke="#ffffff"
           >
             {data.map((entry, index) => (

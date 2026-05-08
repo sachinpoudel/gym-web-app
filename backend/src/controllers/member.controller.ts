@@ -66,16 +66,18 @@ export const memberController = {
 
   async getAll(req: Request, res: Response) {
     const page = Math.max(Number(req.query.page ?? 1), 1);
-    const limit = Math.min(Math.max(Number(req.query.limit ?? 1000), 1), 10000);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 200);
 
     const status = req.query.status as MemberStatus | undefined;
     const plan = req.query.plan as MemberPlan | undefined;
     const search = req.query.search as string | undefined;
+    const expiringSoon = req.query.expiringSoon === "true";
 
     const members = await memberService.getAll({
       ...(status ? { status } : {}),
       ...(plan ? { plan } : {}),
       ...(search ? { search } : {}),
+      ...(expiringSoon ? { expiringSoon } : {}),
       page,
       limit
     });
@@ -153,5 +155,38 @@ export const memberController = {
   async getStats(req: Request, res: Response) {
     const stats = await memberService.getStats(getRequiredParam(req, "id"));
     return sendSuccess(res, stats, "Member stats fetched");
+  },
+
+  async renew(req: Request, res: Response) {
+    const requiredFields = ["plan", "paymentAmount", "paymentMethod"];
+    const missing = requiredFields.find(
+      (field) => req.body[field] === undefined || req.body[field] === null || req.body[field] === ""
+    );
+    if (missing) {
+      throw new HttpError(400, `${missing} is required`);
+    }
+
+    const plan = req.body.plan as MemberPlan;
+    if (!Object.values(MemberPlan).includes(plan)) {
+      throw new HttpError(400, "Invalid plan selected");
+    }
+
+    const paymentMethod = req.body.paymentMethod as PaymentMethod;
+    if (!Object.values(PaymentMethod).includes(paymentMethod)) {
+      throw new HttpError(400, "Invalid payment method selected");
+    }
+
+    const paymentAmount = Number(req.body.paymentAmount);
+    const renewalStart = req.body.renewalStart ? new Date(req.body.renewalStart) : null;
+
+    const payload = await memberService.renewMembership({
+      memberId: getRequiredParam(req, "id"),
+      plan,
+      paymentAmount,
+      paymentMethod,
+      ...(renewalStart ? { renewalStart } : {})
+    });
+
+    return sendSuccess(res, payload, "Membership renewed");
   }
 };

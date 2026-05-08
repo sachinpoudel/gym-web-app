@@ -11,11 +11,11 @@ export const revalidate = 0;
 
 export default async function MembersPage() {
   const token = cookies().get("admin_token")?.value;
-  const response = await getMembers(token);
+  const response = await getMembers(token, { page: "1", limit: "20" });
 
   const members: Member[] = (!response.success || !response.data
     ? []
-    : response.data
+    : response.data.data
   ).map((m) => {
     if (typeof m.daysLeft !== "number") {
       throw new Error(`Critical data missing: daysLeft for member ${m.id}`);
@@ -30,7 +30,12 @@ export default async function MembersPage() {
 
   return (
     <DashboardLayout title="Members">
-      <MembersClient initialMembers={members} />
+      <MembersClient
+        initialMembers={members}
+        initialTotal={response.success && response.data ? response.data.total : 0}
+        initialPage={1}
+        initialLimit={20}
+      />
     </DashboardLayout>
   );
 }

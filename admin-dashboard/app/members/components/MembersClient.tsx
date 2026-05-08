@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Member, MemberPlan, MemberStatus } from "@/types";
 import { useTransition } from "react";
-import { deleteMember, freezeMember, activateMember } from "@/lib/api";
+import { deleteMember, freezeMember, activateMember, getMembers } from "@/lib/api";
 import { getAuthToken } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import AddMemberModal from "./AddMemberModal";
@@ -19,10 +19,10 @@ const PLAN_LABEL: Record<MemberPlan, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-    ACTIVE: "bg-emerald-100 text-emerald-700",
-    EXPIRED: "bg-red-100 text-red-600",
-    FROZEN: "bg-sky-100 text-sky-700",
-    "Expiring Soon": "bg-amber-100 text-amber-700",
+    ACTIVE: "bg-emerald-100 text-emerald-800",
+    EXPIRED: "bg-rose-100 text-rose-700",
+    FROZEN: "bg-slate-100 text-slate-700",
+    "Expiring Soon": "bg-amber-100 text-amber-800",
 };
 
 const statusLabel = (status: Member["status"]) =>
@@ -49,11 +49,25 @@ const fmtDate = (iso: string) => {
 
 // ── component ─────────────────────────────────────────────────────────────────
 
-type Props = { initialMembers: Member[] };
+type Props = {
+    initialMembers: Member[];
+    initialTotal: number;
+    initialPage: number;
+    initialLimit: number;
+};
 
-export default function MembersClient({ initialMembers }: Props) {
+export default function MembersClient({
+    initialMembers,
+    initialTotal,
+    initialPage,
+    initialLimit,
+}: Props) {
     const router = useRouter();
     const [members, setMembers] = useState<Member[]>(initialMembers);
+    const [total, setTotal] = useState(initialTotal);
+    const [page, setPage] = useState(initialPage);
+    const [limit, setLimit] = useState(initialLimit);
+    const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
     const [planFilter, setPlanFilter] = useState<"All" | MemberPlan>("All");
     const [statusFilter, setStatusFilter] = useState<"All" | MemberStatus | "Expiring Soon">("All");
@@ -66,26 +80,76 @@ export default function MembersClient({ initialMembers }: Props) {
     // Sync with server if the props update (e.g. after a router.refresh)
     useMemo(() => {
         setMembers(initialMembers);
-    }, [initialMembers]);
+        setTotal(initialTotal);
+    }, [initialMembers, initialTotal]);
 
-    const filtered = useMemo(() => {
-        const q = search.toLowerCase();
-        return members.filter((m) => {
-            const name = (m.fullName || "").toLowerCase();
-            const email = (m.email || "").toLowerCase();
-            const phone = (m.phone || "");
-            const matchSearch =
-                !q || name.includes(q) || email.includes(q) || phone.includes(q);
-            const matchPlan = planFilter === "All" || m.plan === planFilter;
-            const matchStatus = statusFilter === "All" || m.status === statusFilter;
-            return matchSearch && matchPlan && matchStatus;
-        });
-    }, [members, search, planFilter, statusFilter]);
+    const isInitialLoad = useRef(true);
+
+    useEffect(() => {
+        const token = getAuthToken() || undefined;
+        const timer = setTimeout(async () => {
+            if (isInitialLoad.current) {
+                isInitialLoad.current = false;
+                return;
+            }
+
+            setLoading(true);
+            const params: Record<string, string> = {
+                page: String(page),
+                limit: String(limit),
+            };
+
+            if (search) params.search = search;
+            if (planFilter !== "All") params.plan = planFilter;
+            if (statusFilter === "Expiring Soon") {
+                params.expiringSoon = "true";
+            } else if (statusFilter !== "All") {
+                params.status = statusFilter;
+            }
+
+            const response = await getMembers(token, params);
+            if (response.success && response.data) {
+                const mapped = response.data.data.map((m) => {
+                    if (typeof m.daysLeft !== "number") {
+                        throw new Error(`Critical data missing: daysLeft for member ${m.id}`);
+                    }
+                    const fullName =
+                        m.fullName || [m.firstName, m.lastName].filter(Boolean).join(" ").trim();
+                    return { ...m, fullName, daysLeft: m.daysLeft };
+                });
+                setMembers(mapped);
+                setTotal(response.data.total);
+            }
+            setLoading(false);
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [search, planFilter, statusFilter, page, limit]);
+
+    const stats = useMemo(() => {
+        const expiringSoon = members.filter((member) =>
+            member.status === "ACTIVE" && member.daysLeft <= 7 && member.daysLeft >= 0
+        ).length;
+        const expired = members.filter((member) => member.status === "EXPIRED").length;
+        const active = members.filter((member) => member.status === "ACTIVE").length;
+        const frozen = members.filter((member) => member.status === "FROZEN").length;
+
+        return {
+            total,
+            active,
+            frozen,
+            expired,
+            expiringSoon,
+        };
+    }, [members, total]);
 
     const showToast = (msg: string, ok = true) => {
         setToast({ msg, ok });
         setTimeout(() => setToast(null), 3000);
     };
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
 
     const handleDelete = async () => {
         if (!deleteId) return;
@@ -179,69 +243,106 @@ export default function MembersClient({ initialMembers }: Props) {
             )}
 
             {/* Header row */}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Members</h1>
-                    <p className="text-sm text-gray-500">{filtered.length} member{filtered.length !== 1 ? "s" : ""} shown</p>
+            <div className="mb-6 rounded-2xl border border-black/10 bg-[linear-gradient(120deg,#fff7ed,rgba(255,255,255,0.9))] px-6 py-6 shadow-soft">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h1 className="font-['Space_Grotesk'] text-3xl font-semibold text-black">Members</h1>
+                        <p className="text-sm text-black/60">
+                            Showing {members.length} of {total} members
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setShowAddModal(true)}
+                        className="flex items-center gap-2 rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-neutral-800 active:scale-[0.98] transition-all"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add New Member
+                    </button>
                 </div>
-                <button
-                    onClick={() => setShowAddModal(true)}
-                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-indigo-700 active:scale-95 transition-all"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add New Member
-                </button>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="rounded-xl border border-black/10 bg-white px-4 py-3">
+                        <div className="text-xs uppercase text-black/50">Total</div>
+                        <div className="mt-2 text-2xl font-semibold text-black">{stats.total}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/10 bg-white px-4 py-3">
+                        <div className="text-xs uppercase text-black/50">Active</div>
+                        <div className="mt-2 text-2xl font-semibold text-black">{stats.active}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/10 bg-white px-4 py-3">
+                        <div className="text-xs uppercase text-black/50">Expiring Soon</div>
+                        <div className="mt-2 text-2xl font-semibold text-black">{stats.expiringSoon}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/10 bg-white px-4 py-3">
+                        <div className="text-xs uppercase text-black/50">Expired</div>
+                        <div className="mt-2 text-2xl font-semibold text-black">{stats.expired}</div>
+                    </div>
+                    <div className="rounded-xl border border-black/10 bg-white px-4 py-3">
+                        <div className="text-xs uppercase text-black/50">Frozen</div>
+                        <div className="mt-2 text-2xl font-semibold text-black">{stats.frozen}</div>
+                    </div>
+                </div>
             </div>
 
             {/* Filters */}
-            <div className="mb-5 flex flex-col sm:flex-row flex-wrap gap-3">
-                <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
-                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                    </svg>
-                    <input
-                        type="text"
-                        placeholder="Search by name, email, or phone…"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full rounded-xl border border-gray-200 bg-white pl-9 pr-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    />
-                </div>
+            <div className="mb-5 rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
+                        <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-black/40" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                        </svg>
+                        <input
+                            type="text"
+                            placeholder="Search by name, email, or phone"
+                            value={search}
+                            onChange={(e) => {
+                                setPage(1);
+                                setSearch(e.target.value);
+                            }}
+                            className="w-full rounded-xl border border-black/10 bg-white pl-9 pr-4 py-2.5 text-sm shadow-sm focus:border-black focus:outline-none"
+                        />
+                    </div>
 
-                <div className="flex w-full gap-3 sm:w-auto">
-                    <select
-                        value={planFilter}
-                        onChange={(e) => setPlanFilter(e.target.value as typeof planFilter)}
-                        className="w-full sm:w-auto flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    >
-                        <option value="All">All Plans</option>
-                        <option value="BASIC">Basic (1 month)</option>
-                        <option value="PRO">Pro (3 months)</option>
-                        <option value="ELITE">Elite (12 months)</option>
-                    </select>
+                    <div className="flex w-full gap-3 sm:w-auto">
+                        <select
+                            value={planFilter}
+                            onChange={(e) => {
+                                setPage(1);
+                                setPlanFilter(e.target.value as typeof planFilter);
+                            }}
+                            className="w-full sm:w-auto flex-1 rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-black focus:outline-none"
+                        >
+                            <option value="All">All Plans</option>
+                            <option value="BASIC">Basic (1 month)</option>
+                            <option value="PRO">Pro (3 months)</option>
+                            <option value="ELITE">Elite (12 months)</option>
+                        </select>
 
-                    <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                        className="w-full sm:w-auto flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                    >
-                        <option value="All">All Status</option>
-                        <option value="ACTIVE">Active</option>
-                        <option value="Expiring Soon">Expiring Soon</option>
-                        <option value="EXPIRED">Expired</option>
-                        <option value="FROZEN">Frozen</option>
-                    </select>
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => {
+                                setPage(1);
+                                setStatusFilter(e.target.value as typeof statusFilter);
+                            }}
+                            className="w-full sm:w-auto flex-1 rounded-xl border border-black/10 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-black focus:outline-none"
+                        >
+                            <option value="All">All Status</option>
+                            <option value="ACTIVE">Active</option>
+                            <option value="Expiring Soon">Expiring Soon</option>
+                            <option value="EXPIRED">Expired</option>
+                            <option value="FROZEN">Frozen</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                         <thead>
-                            <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            <tr className="border-b border-black/10 bg-black/[0.02] text-xs font-semibold uppercase tracking-wide text-black/60">
                                 <th className="px-5 py-3.5 text-left">Member</th>
                                 <th className="px-5 py-3.5 text-left">Phone</th>
                                 <th className="px-5 py-3.5 text-left">Plan</th>
@@ -252,15 +353,15 @@ export default function MembersClient({ initialMembers }: Props) {
                                 <th className="px-5 py-3.5 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {filtered.length === 0 ? (
+                        <tbody className="divide-y divide-black/5">
+                            {members.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="py-16 text-center text-gray-400">
-                                        No members found matching your filters.
+                                    <td colSpan={8} className="py-16 text-center text-black/40">
+                                        {loading ? "Loading members..." : "No members found matching your filters."}
                                     </td>
                                 </tr>
                             ) : (
-                                filtered.map((member) => {
+                                members.map((member) => {
                                     // if isPending is true, consider the action still loading
                                     const isBusy = actionLoading === member.id || isPending;
                                     const isExpiringSoon =
@@ -268,32 +369,32 @@ export default function MembersClient({ initialMembers }: Props) {
                                     const displayStatus = isExpiringSoon ? "Expiring Soon" : member.status;
 
                                     return (
-                                        <tr key={member.id} className="hover:bg-gray-50/70 transition-colors">
+                                        <tr key={member.id} className="hover:bg-black/[0.02] transition-colors">
                                             {/* Member Name + Email */}
                                             <td className="px-5 py-4">
-                                                <div className="font-semibold text-gray-900">{member.fullName || "—"}</div>
-                                                <div className="text-xs text-gray-400">{member.email}</div>
+                                                <div className="font-semibold text-black">{member.fullName || "—"}</div>
+                                                <div className="text-xs text-black/40">{member.email}</div>
                                             </td>
-                                            <td className="px-5 py-4 text-gray-600">{member.phone}</td>
+                                            <td className="px-5 py-4 text-black/70">{member.phone}</td>
 
                                             {/* Plan */}
                                             <td className="px-5 py-4">
-                                                <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                                                <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
                                                     {PLAN_LABEL[member.plan as MemberPlan] ?? member.plan}
                                                 </span>
                                             </td>
 
-                                            <td className="px-5 py-4 text-gray-500">{fmtDate(member.joinDate)}</td>
-                                            <td className="px-5 py-4 text-gray-500">{fmtDate(member.expiryDate)}</td>
+                                            <td className="px-5 py-4 text-black/60">{fmtDate(member.joinDate)}</td>
+                                            <td className="px-5 py-4 text-black/60">{fmtDate(member.expiryDate)}</td>
 
                                             {/* Days Left */}
                                             <td className="px-5 py-4">
                                                 <span
                                                     className={`font-semibold ${member.daysLeft < 0
-                                                        ? "text-red-500"
+                                                        ? "text-rose-600"
                                                         : member.daysLeft <= 7
                                                             ? "text-amber-600"
-                                                            : "text-gray-700"
+                                                            : "text-black/70"
                                                         }`}
                                                 >
                                                     {member.daysLeft < 0 ? "Expired" : `${member.daysLeft}d`}
@@ -315,13 +416,13 @@ export default function MembersClient({ initialMembers }: Props) {
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     <Link
                                                         href={`/members/${member.id}`}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                                                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-black/60 hover:bg-black/5 transition-colors"
                                                     >
                                                         View
                                                     </Link>
                                                     <Link
                                                         href={`/members/${member.id}?mode=edit`}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 transition-colors"
                                                     >
                                                         Edit
                                                     </Link>
@@ -329,7 +430,7 @@ export default function MembersClient({ initialMembers }: Props) {
                                                         <button
                                                             onClick={() => handleActivate(member.id)}
                                                             disabled={isBusy}
-                                                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-40"
+                                                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-40"
                                                         >
                                                             {isBusy ? "…" : "Activate"}
                                                         </button>
@@ -337,7 +438,7 @@ export default function MembersClient({ initialMembers }: Props) {
                                                         <button
                                                             onClick={() => handleFreeze(member.id)}
                                                             disabled={isBusy}
-                                                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-sky-600 hover:bg-sky-50 transition-colors disabled:opacity-40"
+                                                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 transition-colors disabled:opacity-40"
                                                         >
                                                             {isBusy ? "…" : "Freeze"}
                                                         </button>
@@ -345,7 +446,7 @@ export default function MembersClient({ initialMembers }: Props) {
                                                     <button
                                                         onClick={() => setDeleteId(member.id)}
                                                         disabled={isBusy}
-                                                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                                                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40"
                                                     >
                                                         Delete
                                                     </button>
@@ -357,6 +458,40 @@ export default function MembersClient({ initialMembers }: Props) {
                             )}
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-black/60">
+                    Page {safePage} of {totalPages}
+                </div>
+                <div className="flex items-center gap-2">
+                    <select
+                        value={limit}
+                        onChange={(e) => {
+                            setPage(1);
+                            setLimit(Number(e.target.value));
+                        }}
+                        className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm shadow-sm focus:border-black focus:outline-none"
+                    >
+                        <option value={10}>10 / page</option>
+                        <option value={20}>20 / page</option>
+                        <option value={50}>50 / page</option>
+                    </select>
+                    <button
+                        onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                        disabled={safePage <= 1 || loading}
+                        className="rounded-xl border border-black/10 px-3 py-2 text-sm text-black/70 hover:bg-black/5 disabled:opacity-50"
+                    >
+                        Previous
+                    </button>
+                    <button
+                        onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={safePage >= totalPages || loading}
+                        className="rounded-xl border border-black/10 px-3 py-2 text-sm text-black/70 hover:bg-black/5 disabled:opacity-50"
+                    >
+                        Next
+                    </button>
                 </div>
             </div>
 

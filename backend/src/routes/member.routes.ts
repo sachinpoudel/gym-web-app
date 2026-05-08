@@ -14,6 +14,7 @@ router.get("/:id/stats", requireAdmin, asyncHandler(memberController.getStats));
 router.get("/:id", requireAdmin, asyncHandler(memberController.getById));
 router.post("/create", requireAdmin, asyncHandler(memberController.create));
 router.put("/:id", requireAdmin, asyncHandler(memberController.update));
+router.post("/:id/renew", requireAdmin, asyncHandler(memberController.renew));
 router.delete("/:id", requireAdmin, asyncHandler(memberController.remove));
 router.patch("/:id/freeze", requireAdmin, asyncHandler(memberController.freeze));
 router.patch("/:id/activate", requireAdmin, asyncHandler(memberController.activate));

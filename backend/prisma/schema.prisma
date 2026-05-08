@@ -39,32 +39,32 @@ enum UserRole {
   FRONT_DESK
 }
 
-enum Difficulty {
-  BEGINNER
-  INTERMEDIATE
-  ADVANCED
-}
+// enum Difficulty {
+//   BEGINNER
+//   INTERMEDIATE
+//   ADVANCED
+// }
 
-enum ClassCategory {
-  YOGA
-  HIIT
-  BOXING
-  CARDIO
-  STRENGTH
-}
+// enum ClassCategory {
+//   YOGA
+//   HIIT
+//   BOXING
+//   CARDIO
+//   STRENGTH
+// }
 
-enum EquipmentCondition {
-  GOOD
-  FAIR
-  NEEDS_REPAIR
-}
+// enum EquipmentCondition {
+//   GOOD
+//   FAIR
+//   NEEDS_REPAIR
+// }
 
-enum CheckInMethod {
-  QR
-  MANUAL
-  APP
-  RFID
-}
+// enum CheckInMethod {
+//   QR
+//   MANUAL
+//   APP
+//   RFID
+// }
 
 model User {
   id        String   @id @default(uuid())
@@ -72,7 +72,7 @@ model User {
   password  String
   role      UserRole @default(MEMBER)
   member    Member?
-  trainer   Trainer?
+  // trainer   Trainer?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -91,11 +91,11 @@ model Member {
   expiryDate       DateTime
   emergencyContact String?
   healthNotes      String?
-  qrCode           String       @unique
-  attendance       Attendance[]
+  // qrCode           String       @unique
+  // attendance       Attendance[]
   payments         Payment[]
-  progress         Progress[]
-  bookings         Booking[]
+  // progress         Progress[]
+  // bookings         Booking[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -104,67 +104,67 @@ model Member {
   @@index([createdAt])
 }
 
-model Trainer {
-  id             String     @id @default(uuid())
-  userId         String     @unique
-  user           User       @relation(fields: [userId], references: [id])
-  firstName      String
-  lastName       String
-  phone          String
-  specialty      String
-  bio            String?
-  certifications String[]
-  rating         Float      @default(0)
-  classes        GymClass[]
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-}
+// model Trainer {
+//   id             String     @id @default(uuid())
+//   userId         String     @unique
+//   user           User       @relation(fields: [userId], references: [id])
+//   firstName      String
+//   lastName       String
+//   phone          String
+//   specialty      String
+//   bio            String?
+//   certifications String[]
+//   rating         Float      @default(0)
+//   classes        GymClass[]
+//   createdAt      DateTime   @default(now())
+//   updatedAt      DateTime   @updatedAt
+// }
 
-model GymClass {
-  id          String        @id @default(uuid())
-  name        String
-  trainerId   String
-  trainer     Trainer       @relation(fields: [trainerId], references: [id])
-  category    ClassCategory
-  difficulty  Difficulty
-  day         String
-  startTime   String
-  duration    Int
-  maxCapacity Int
-  description String?
-  bookings    Booking[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-}
+// model GymClass {
+//   id          String        @id @default(uuid())
+//   name        String
+//   trainerId   String
+//   trainer     Trainer       @relation(fields: [trainerId], references: [id])
+//   category    ClassCategory
+//   difficulty  Difficulty
+//   day         String
+//   startTime   String
+//   duration    Int
+//   maxCapacity Int
+//   description String?
+//   bookings    Booking[]
+//   createdAt   DateTime      @default(now())
+//   updatedAt   DateTime      @updatedAt
+// }
 
-model Booking {
-  id       String   @id @default(uuid())
-  memberId String
-  member   Member   @relation(fields: [memberId], references: [id])
-  classId  String
-  gymClass GymClass @relation(fields: [classId], references: [id])
-  attended Boolean  @default(false)
-  bookedAt DateTime @default(now())
+// model Booking {
+//   id       String   @id @default(uuid())
+//   memberId String
+//   member   Member   @relation(fields: [memberId], references: [id])
+//   classId  String
+//   gymClass GymClass @relation(fields: [classId], references: [id])
+//   attended Boolean  @default(false)
+//   bookedAt DateTime @default(now())
 
-  @@unique([memberId, classId])
-  @@index([classId])
-  @@index([memberId])
-  @@index([attended])
-}
+//   @@unique([memberId, classId])
+//   @@index([classId])
+//   @@index([memberId])
+//   @@index([attended])
+// }
 
-model Attendance {
-  id        String        @id @default(uuid())
-  memberId  String
-  member    Member        @relation(fields: [memberId], references: [id])
-  checkIn   DateTime      @default(now())
-  checkOut  DateTime?
-  duration  Int?
-  method    CheckInMethod @default(MANUAL)
-  createdAt DateTime      @default(now())
+// model Attendance {
+//   id        String        @id @default(uuid())
+//   memberId  String
+//   member    Member        @relation(fields: [memberId], references: [id])
+//   checkIn   DateTime      @default(now())
+//   checkOut  DateTime?
+//   duration  Int?
+//   method    CheckInMethod @default(MANUAL)
+//   createdAt DateTime      @default(now())
 
-  @@index([checkIn])
-  @@index([memberId])
-}
+//   @@index([checkIn])
+//   @@index([memberId])
+// }
 
 model Payment {
   id        String        @id @default(uuid())
@@ -184,36 +184,36 @@ model Payment {
   @@index([memberId])
 }
 
-model Progress {
-  id         String   @id @default(uuid())
-  memberId   String
-  member     Member   @relation(fields: [memberId], references: [id])
-  weight     Float?
-  bodyFat    Float?
-  chest      Float?
-  waist      Float?
-  hips       Float?
-  notes      String?
-  recordedAt DateTime @default(now())
-}
+// model Progress {
+//   id         String   @id @default(uuid())
+//   memberId   String
+//   member     Member   @relation(fields: [memberId], references: [id])
+//   weight     Float?
+//   bodyFat    Float?
+//   chest      Float?
+//   waist      Float?
+//   hips       Float?
+//   notes      String?
+//   recordedAt DateTime @default(now())
+// }
 
-model Equipment {
-  id              String             @id @default(uuid())
-  name            String
-  category        String
-  quantity        Int
-  condition       EquipmentCondition @default(GOOD)
-  location        String
-  lastServiced    DateTime?
-  maintenanceLogs MaintenanceLog[]
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-}
+// model Equipment {
+//   id              String             @id @default(uuid())
+//   name            String
+//   category        String
+//   quantity        Int
+//   condition       EquipmentCondition @default(GOOD)
+//   location        String
+//   lastServiced    DateTime?
+//   maintenanceLogs MaintenanceLog[]
+//   createdAt       DateTime           @default(now())
+//   updatedAt       DateTime           @updatedAt
+// }
 
-model MaintenanceLog {
-  id          String    @id @default(uuid())
-  equipmentId String
-  equipment   Equipment @relation(fields: [equipmentId], references: [id])
-  note        String
-  loggedAt    DateTime  @default(now())
-}
+// model MaintenanceLog {
+//   id          String    @id @default(uuid())
+//   equipmentId String
+//   equipment   Equipment @relation(fields: [equipmentId], references: [id])
+//   note        String
+//   loggedAt    DateTime  @default(now())
+// }
