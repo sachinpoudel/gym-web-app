@@ -16,6 +16,7 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get("admin_token")?.value;
   if (!token) {
     const loginUrl = new URL("/login", request.url);
+    console.log(`Unauthorized access attempt to ${pathname}, redirecting to /login`);
     return NextResponse.redirect(loginUrl);
   }
 
