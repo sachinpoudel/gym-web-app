@@ -1,4 +1,5 @@
 import { UserRole } from "@prisma/client";
+import { env } from "../config/env";
 import { prisma } from "../config/prisma";
 import { comparePassword, hashPassword } from "../utils/password";
 import { HttpError } from "../utils/httpError";
@@ -51,8 +52,8 @@ export const authService = {
   },
 
   async login(email: string, password: string) {
-
-    
+    const start = Date.now();
+    const lookupStart = Date.now();
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
@@ -60,14 +61,24 @@ export const authService = {
         
       }
     });
+    const lookupMs = Date.now() - lookupStart;
 
     if (!user) {
       throw new HttpError(401, "Invalid credentials");
     }
 
+    const compareStart = Date.now();
     const isPasswordValid = await comparePassword(password, user.password);
+    const compareMs = Date.now() - compareStart;
     if (!isPasswordValid) {
       throw new HttpError(401, "Invalid credentials");
+    }
+
+    if (env.nodeEnv !== "production") {
+      const totalMs = Date.now() - start;
+      console.info(
+        `[auth.login] lookup=${lookupMs}ms compare=${compareMs}ms total=${totalMs}ms`
+      );
     }
 
     return {

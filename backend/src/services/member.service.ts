@@ -1,5 +1,6 @@
 import { MemberPlan, MemberStatus, PaymentMethod, PaymentStatus, Prisma, UserRole } from "@prisma/client";
 import { randomUUID } from "crypto";
+import { env } from "../config/env";
 import { prisma } from "../config/prisma";
 import { hashPassword } from "../utils/password";
 import { HttpError } from "../utils/httpError";
@@ -125,6 +126,7 @@ export const memberService = {
   async getAll(filters: GetAllFilters) {
     const { status, plan, search, expiringSoon, page, limit } = filters;
     const skip = (page - 1) * limit;
+    const start = Date.now();
 
     const now = new Date();
     const expiringEnd = new Date(now);
@@ -166,6 +168,11 @@ export const memberService = {
         take: limit
       })
     ]);
+
+    if (env.nodeEnv !== "production") {
+      const totalMs = Date.now() - start;
+      console.info(`[members.getAll] total=${totalMs}ms count=${total} page=${page} limit=${limit}`);
+    }
 
     const mapped = data.map((member) => {
       const daysLeft = Math.ceil(

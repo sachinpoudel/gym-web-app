@@ -1,4 +1,4 @@
-import { authHeader } from "@/lib/auth";
+import { authHeader, clearAuthSession } from "@/lib/auth";
 import type {
   Admin,
   ApiResponse,
@@ -26,7 +26,7 @@ const parseJson = async (response: Response) => {
 
 const request = async <T>(
   path: string,
-  options?: RequestInit & { token?: string }
+  options?: RequestInit & { token?: string; timeoutMs?: number; skipAuthRedirect?: boolean }
 ): Promise<ApiResponse<T>> => {
   const url = `${API_BASE}${path}`;
   const headers = new Headers(options?.headers);
@@ -35,8 +35,51 @@ const request = async <T>(
     headers.set(key, value);
   });
 
-  const response = await fetch(url, { ...options, headers, cache: "no-store" });
-  const payload = await parseJson(response);
+  const controller = new AbortController();
+  const timeoutMs = options?.timeoutMs ?? 10000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      controller.abort();
+    } else {
+      options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
+
+  let response: Response;
+  let payload: any = null;
+
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      cache: "no-store",
+      signal: controller.signal
+    });
+    payload = await parseJson(response);
+  } catch (error) {
+    const message =
+      error instanceof Error && error.name === "AbortError"
+        ? "Request timed out"
+        : "Network request failed";
+    return {
+      success: false,
+      data: null,
+      message
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if ((response.status === 401 || response.status === 403) && !options?.skipAuthRedirect) {
+    if (typeof window !== "undefined") {
+      clearAuthSession();
+      if (window.location.pathname !== "/login") {
+        window.location.assign("/login");
+      }
+    }
+  }
 
   if (!response.ok) {
     return {
@@ -58,6 +101,7 @@ export const adminLogin = (email: string, password: string) =>
     method: "POST",
     body: JSON.stringify({ email, password }),
     headers: { "Content-Type": "application/json" },
+    skipAuthRedirect: true,
   });
 
 export const getMembers = async (token?: string, params?: Record<string, string>) => {

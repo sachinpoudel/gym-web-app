@@ -1,8 +1,27 @@
 import { MemberStatus, PaymentStatus } from "@prisma/client";
+import { env } from "../config/env";
 import { prisma } from "../config/prisma";
+
+type OverviewCache = {
+  expiresAt: number;
+  data: any;
+};
+
+const overviewCache: OverviewCache = {
+  expiresAt: 0,
+  data: null
+};
+
+const OVERVIEW_CACHE_TTL_MS = 60 * 1000;
 
 export const reportsService = {
   async getOverview() {
+    const nowMs = Date.now();
+    if (overviewCache.data && nowMs < overviewCache.expiresAt) {
+      return overviewCache.data;
+    }
+
+    const start = Date.now();
     const now = new Date();
     const weekday = now
       .toLocaleDateString("en-US", { weekday: "long" })
@@ -178,7 +197,7 @@ export const reportsService = {
       }))
     };
 
-    return {
+    const payload = {
       stats,
       trends,
       alerts,
@@ -226,6 +245,16 @@ export const reportsService = {
       ],
       expiringSoon: expiringSoonMembers
     };
+
+    overviewCache.data = payload;
+    overviewCache.expiresAt = Date.now() + OVERVIEW_CACHE_TTL_MS;
+
+    if (env.nodeEnv !== "production") {
+      const totalMs = Date.now() - start;
+      console.info(`[reports.getOverview] total=${totalMs}ms cached=false`);
+    }
+
+    return payload;
   },
 
   async getRevenue(period: "monthly" | "yearly") {

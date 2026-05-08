@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { env } from "../config/env";
 import { authService } from "../services/auth.service";
 import { sendSuccess } from "../utils/apiResponse";
 import { signToken } from "../utils/jwt";
@@ -26,9 +27,15 @@ export const authController = {
   },
 
   async login(req: Request, res: Response) {
+    const start = Date.now();
     const { email, password } = req.body;
     const user = await authService.login(email, password);
     const token = signToken({ userId: user.id, role: user.role });
+
+    if (env.nodeEnv !== "production") {
+      const totalMs = Date.now() - start;
+      console.info(`[auth.login] controller total=${totalMs}ms`);
+    }
 
     return sendSuccess(res, { token, user }, "Login successful");
   },

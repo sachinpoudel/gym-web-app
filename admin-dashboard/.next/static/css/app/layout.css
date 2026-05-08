@@ -554,6 +554,9 @@ video {
 .top-6{
   top: 1.5rem;
 }
+.right-3{
+  right: 0.75rem;
+}
 .z-10{
   z-index: 10;
 }
@@ -609,11 +612,11 @@ video {
 .mt-4{
   margin-top: 1rem;
 }
-.mt-6{
-  margin-top: 1.5rem;
-}
 .mt-5{
   margin-top: 1.25rem;
+}
+.mt-6{
+  margin-top: 1.5rem;
 }
 .block{
   display: block;
@@ -1202,6 +1205,9 @@ video {
 .pt-6{
   padding-top: 1.5rem;
 }
+.pr-10{
+  padding-right: 2.5rem;
+}
 .text-left{
   text-align: left;
 }
@@ -1564,6 +1570,11 @@ body {
 .hover\:text-gray-700:hover{
   --tw-text-opacity: 1;
   color: rgb(55 65 81 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-black:hover{
+  --tw-text-opacity: 1;
+  color: rgb(0 0 0 / var(--tw-text-opacity, 1));
 }
 
 .hover\:opacity-70:hover{

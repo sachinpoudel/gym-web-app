@@ -1,4 +1,5 @@
 import { PaymentStatus, Prisma } from "@prisma/client";
+import { env } from "../config/env";
 import { prisma } from "../config/prisma";
 
 export const paymentService = {
@@ -129,22 +130,31 @@ export const paymentService = {
   },
 
   getOverdue() {
-    return prisma.payment.findMany({
-      where: {
-        status: PaymentStatus.OVERDUE
-      },
-      include: {
-        member: {
-          select: {
-            firstName: true,
-            lastName: true,
-            phone: true,
-            user: { select: { email: true } }
+    const start = Date.now();
+    return prisma.payment
+      .findMany({
+        where: {
+          status: PaymentStatus.OVERDUE
+        },
+        include: {
+          member: {
+            select: {
+              firstName: true,
+              lastName: true,
+              phone: true,
+              user: { select: { email: true } }
+            }
           }
+        },
+        orderBy: { dueDate: "asc" }
+      })
+      .then((rows) => {
+        if (env.nodeEnv !== "production") {
+          const totalMs = Date.now() - start;
+          console.info(`[payments.getOverdue] total=${totalMs}ms count=${rows.length}`);
         }
-      },
-      orderBy: { dueDate: "asc" }
-    });
+        return rows;
+      });
   },
 
   sendReminder(id: string) {
